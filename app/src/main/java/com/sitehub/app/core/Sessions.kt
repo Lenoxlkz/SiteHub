@@ -12,18 +12,14 @@ import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebResponse
 
-/**
- * Sesiones de navegación: una GeckoSession por sitio, solo la activa adjunta a
- * la vista. El estado de navegación (atrás/adelante/carga) se guarda POR pestaña
- * para no mostrar el estado de la anterior al cambiar.
- */
 object Sessions {
-
     private val sessions = LinkedHashMap<Long, GeckoSession>()
     private val urls = HashMap<Long, String>()
     private val backState = HashMap<Long, Boolean>()
     private val forwardState = HashMap<Long, Boolean>()
     private val loadingState = HashMap<Long, Boolean>()
+    private val pendingUrl = HashMap<Long, String>()
+    private val crashCount = HashMap<Long, Int>()
     private var nextId = 1L
 
     var activeId by mutableStateOf(-1L)
@@ -38,8 +34,7 @@ object Sessions {
         private set
 
     private fun syncActiveState() {
-        currentUrl = urls[activeId]
-            ?: Prefs.homeUrl.ifEmpty { Prefs.defaultSites().first().url }
+        currentUrl = urls[activeId] ?: Prefs.homeUrl.ifEmpty { Prefs.defaultSites().first().url }
         canGoBack = backState[activeId] ?: false
         canGoForward = forwardState[activeId] ?: false
         loading = loadingState[activeId] ?: false
@@ -49,9 +44,7 @@ object Sessions {
         val settings = GeckoSessionSettings.Builder().usePrivateMode(false)
         Prefs.userAgentOverride()?.let { settings.userAgentOverride(it) }
         val session = GeckoSession(settings.build())
-        val runtime = Engine.runtime
-            ?: error("El motor aún no está listo; espera a Engine.ensure(context)")
-        // Delegados ANTES de abrir/cargar: no se pierde ningún evento inicial.
+        val runtime = Engine.runtime ?: error("El motor aún no está listo")
         installDelegates(session, id)
         session.open(runtime)
         sessions[id] = session
@@ -59,16 +52,16 @@ object Sessions {
     }
 
     fun open(url: String): Long {
+        if (Engine.runtime == null) return -1L
         val id = nextId++
         createSession(id)
         urls[id] = url
+        pendingUrl[id] = url
         activeId = id
         syncActiveState()
-        sessions[id]!!.loadUri(url)
         return id
     }
 
-    /** Abre (o reusa) el sitio embebido indicado. */
     fun openSite(site: Prefs.Site) {
         val existing = urls.entries.firstOrNull { it.value == site.url }
         if (existing != null) {
@@ -80,11 +73,9 @@ object Sessions {
     }
 
     fun close(id: Long) {
-        sessions.remove(id)?.let { session ->
-            runCatching { session.stop() }
-            runCatching { session.close() }
-        }
-        urls.remove(id); backState.remove(id); forwardState.remove(id); loadingState.remove(id)
+        sessions.remove(id)?.let { runCatching { it.stop() }; runCatching { it.close() } }
+        urls.remove(id); backState.remove(id); forwardState.remove(id)
+        loadingState.remove(id); pendingUrl.remove(id); crashCount.remove(id)
         if (activeId == id) {
             activeId = sessions.keys.firstOrNull() ?: -1L
             syncActiveState()
@@ -92,29 +83,23 @@ object Sessions {
     }
 
     fun closeAll() {
-        sessions.values.forEach { session ->
-            runCatching { session.stop() }
-            runCatching { session.close() }
-        }
-        sessions.clear(); urls.clear()
-        backState.clear(); forwardState.clear(); loadingState.clear()
+        sessions.values.forEach { runCatching { it.stop() }; runCatching { it.close() } }
+        sessions.clear(); urls.clear(); backState.clear(); forwardState.clear()
+        loadingState.clear(); pendingUrl.clear(); crashCount.clear()
         activeId = -1L
         currentUrl = Prefs.homeUrl.ifEmpty { Prefs.defaultSites().first().url }
         canGoBack = false; canGoForward = false; loading = false
     }
 
-    /** Libera las sesiones de fondo bajo presión de memoria. */
     fun closeBackground() {
-        sessions.entries.filter { it.key != activeId }.forEach { (id, session) ->
-            runCatching { session.stop() }
-            runCatching { session.close() }
-            sessions.remove(id); urls.remove(id)
-            backState.remove(id); forwardState.remove(id); loadingState.remove(id)
+        sessions.entries.filter { it.key != activeId }.forEach { (id, s) ->
+            runCatching { s.stop() }; runCatching { s.close() }
+            sessions.remove(id); urls.remove(id); backState.remove(id)
+            forwardState.remove(id); loadingState.remove(id); pendingUrl.remove(id); crashCount.remove(id)
         }
     }
 
     fun activeSession(): GeckoSession? = sessions[activeId]
-
     fun goBack() { runCatching { activeSession()?.goBack() } }
     fun goForward() { runCatching { activeSession()?.goForward() } }
     fun reload() { runCatching { activeSession()?.reload() } }
@@ -129,30 +114,27 @@ object Sessions {
             currentUrl = normalized
             runCatching { activeSession()?.loadUri(normalized) }
         }
-        // Ya NO se llama Prefs.setHome aquí: la página de inicio es la primera
-        // de la lista de sitios (como dice la UI), no la última URL visitada.
     }
 
-    /** Adjunta la sesión activa a la vista del navegador (sin duplicar attachments). */
     fun attachActive(view: GeckoView) {
         val session = activeSession() ?: return
-        if (view.session === session) return
-        runCatching { view.releaseSession() }
-        runCatching { view.setSession(session) }
+        if (view.session !== session) {
+            runCatching { view.releaseSession() }
+            runCatching { view.setSession(session) }
+        }
+        val pending = pendingUrl.remove(activeId)
+        if (pending != null) runCatching { session.loadUri(pending) }
     }
 
-    /** Abre un esquema externo (mailto:, tel:, intent:…) con la app que corresponda. */
     private fun openExternal(uri: String): Boolean {
         val ctx = Engine.appContext ?: return false
         return runCatching {
-            val intent = if (uri.startsWith("intent:")) {
+            val intent = if (uri.startsWith("intent:"))
                 Intent.parseUri(uri, Intent.URI_INTENT_SCHEME).apply {
                     addCategory(Intent.CATEGORY_BROWSABLE)
                     component = null
                 }
-            } else {
-                Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-            }
+            else Intent(Intent.ACTION_VIEW, Uri.parse(uri))
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (intent.resolveActivity(ctx.packageManager) != null) {
                 ctx.startActivity(intent); true
@@ -168,10 +150,10 @@ object Sessions {
             }
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 loadingState[id] = false
+                if (success) crashCount[id] = 0
                 if (id == activeId) loading = false
             }
         }
-
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(
                 session: GeckoSession,
@@ -200,9 +182,6 @@ object Sessions {
                 openExternal(request.uri)
                 return GeckoResult.fromValue(AllowOrDeny.DENY)
             }
-
-            // window.open / target="_blank": Gecko pide aquí la nueva sesión
-            // (NavigationDelegate.onNewSession; GeckoSession no tiene TabDelegate).
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
                 if (Engine.runtime == null) return null
                 val scheme = uri.substringBefore(':', "").lowercase()
@@ -215,19 +194,24 @@ object Sessions {
                 urls[newId] = uri
                 activeId = newId
                 syncActiveState()
-                // Gecko carga la URI él mismo en la sesión devuelta.
                 return GeckoResult.fromValue(created)
             }
         }
-
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
                 DownloadCenter.save(response)
             }
-            // window.close() desde la página cierra su pestaña.
             override fun onCloseRequest(session: GeckoSession) {
                 val entry = sessions.entries.firstOrNull { it.value == session } ?: return
                 close(entry.key)
+            }
+            override fun onCrash(session: GeckoSession) {
+                val n = (crashCount[id] ?: 0) + 1
+                crashCount[id] = n
+                if (n <= 3) {
+                    val url = urls[id]
+                    if (url != null) runCatching { session.loadUri(url) }
+                }
             }
         }
     }

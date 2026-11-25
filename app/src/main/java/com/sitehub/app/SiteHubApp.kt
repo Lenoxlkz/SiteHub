@@ -16,10 +16,18 @@ class SiteHubApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (isCrashProcess()) return
         CrashReporter.install(this)
         Prefs.init(this)
         DownloadCenter.init(this)
         Engine.warmUpAfterFirstFrame(this)
+    }
+
+    private fun isCrashProcess(): Boolean {
+        val name = runCatching {
+            java.io.File("/proc/self/cmdline").readText().replace("\u0000", "").trim()
+        }.getOrNull() ?: return false
+        return name.endsWith(":crash")
     }
 
     override fun onTrimMemory(level: Int) {
