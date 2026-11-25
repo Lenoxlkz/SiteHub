@@ -54,6 +54,7 @@ object Engine {
                 )
                 .extensionsProcessEnabled(true)
                 .extensionsWebAPIEnabled(true)
+                .preferredColorScheme(preferredColorScheme())
                 .build()
         )
 

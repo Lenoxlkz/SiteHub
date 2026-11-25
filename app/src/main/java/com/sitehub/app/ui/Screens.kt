@@ -80,9 +80,9 @@ import org.mozilla.geckoview.WebExtension
 fun BrowserScreen(modifier: Modifier = Modifier) {
     val url = Sessions.currentUrl
     var urlField by remember(url) { mutableStateOf(url) }
-    val canGoBack = Sessions.canGoBack.value
-    val canGoForward = Sessions.canGoForward.value
-    val loading = Sessions.loading.value
+    val canGoBack = Sessions.canGoBack
+    val canGoForward = Sessions.canGoForward
+    val loading = Sessions.loading
     val ready = Engine.ready
     val actions = ExtensionsManager.toolbarActions
 
@@ -721,13 +721,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        Prefs.setTheme(mode)
+                        Prefs.applyTheme(mode)
                         Engine.applyTheme()
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(selected = Prefs.theme == mode, onClick = {
-                    Prefs.setTheme(mode)
+                    Prefs.applyTheme(mode)
                     Engine.applyTheme()
                 })
                 Text(mode.label)
@@ -745,11 +745,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { Prefs.setCookies(mode) },
+                    .clickable { Prefs.applyCookies(mode) },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(selected = Prefs.cookies == mode, onClick = {
-                    Prefs.setCookies(mode)
+                    Prefs.applyCookies(mode)
                 })
                 Column {
                     Text(mode.label, style = MaterialTheme.typography.bodyMedium)
@@ -774,10 +774,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { Prefs.setUa(mode) },
+                    .clickable { Prefs.applyUa(mode) },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RadioButton(selected = Prefs.ua == mode, onClick = { Prefs.setUa(mode) })
+                RadioButton(selected = Prefs.ua == mode, onClick = { Prefs.applyUa(mode) })
                 Column {
                     Text(mode.label, style = MaterialTheme.typography.bodyMedium)
                     Text(

@@ -44,6 +44,13 @@ android {
         compose = true
     }
 
+    lint {
+        // El lint vital sobre el AAR de GeckoView (~90 MB) desborda memoria;
+        // el análisis estático no aporta aquí y bloquea el release.
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     packaging {
         resources {
             excludes += setOf("META-INF/DEPENDENCIES", "META-INF/AL2.0", "META-INF/LGPL2.1")

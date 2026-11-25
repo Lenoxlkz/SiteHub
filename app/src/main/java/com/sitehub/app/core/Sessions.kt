@@ -3,7 +3,6 @@ package com.sitehub.app.core
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.State
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
@@ -29,31 +28,25 @@ object Sessions {
         private set
 
     /** Estado de navegación para los botones atrás/adelante. */
-    val canGoBack: State<Boolean>
-        get() = _canGoBack
-    private var _canGoBack by mutableStateOf(false)
+    var canGoBack by mutableStateOf(false)
+        private set
 
-    val canGoForward: State<Boolean>
-        get() = _canGoForward
-    private var _canGoForward by mutableStateOf(false)
+    var canGoForward by mutableStateOf(false)
+        private set
 
     /** Cargando (indicador fino bajo la barra). */
-    val loading: State<Boolean>
-        get() = _loading
-    private var _loading by mutableStateOf(false)
+    var loading by mutableStateOf(false)
+        private set
 
     fun open(url: String): Long {
         val id = nextId++
-        val session = GeckoSession(
-            GeckoSessionSettings.Builder()
-                .usePrivateMode(false)
-                .userAgentOverride(Prefs.userAgentOverride())
-                .build()
-        )
+        val settings = GeckoSessionSettings.Builder().usePrivateMode(false)
+        // UA Chrome real (o el modo elegido); null = UA nativo de Gecko.
+        Prefs.userAgentOverride()?.let { settings.userAgentOverride(it) }
+        val session = GeckoSession(settings.build())
         val runtime = Engine.runtime
             ?: error("El motor aún no está listo; espera a Engine.ensure(context)")
         session.open(runtime)
-        session.settings.preferredColorScheme = Engine.preferredColorScheme()
         session.loadUri(url)
 
         installDelegates(session, id)
@@ -97,9 +90,9 @@ object Sessions {
         urls.clear()
         activeId = -1L
         currentUrl = Prefs.homeUrl.ifEmpty { Prefs.defaultSites().first().url }
-        _canGoBack = false
-        _canGoForward = false
-        _loading = false
+        canGoBack = false
+        canGoForward = false
+        loading = false
     }
 
     /** Libera las sesiones de fondo bajo presión de memoria. */
@@ -146,21 +139,32 @@ object Sessions {
     private fun installDelegates(session: GeckoSession, id: Long) {
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
-                urls[id] = url
-                if (id == activeId) currentUrl = url
-                _loading = true
+                if (id == activeId) loading = true
             }
 
             override fun onPageStop(session: GeckoSession, success: Boolean) {
-                if (id == activeId) _loading = false
+                if (id == activeId) loading = false
+            }
+        }
+
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean
+            ) {
+                val shown = url ?: return
+                urls[id] = shown
+                if (id == activeId) currentUrl = shown
             }
 
             override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
-                if (id == activeId) _canGoBack = canGoBack
+                if (id == activeId) Sessions.canGoBack = canGoBack
             }
 
             override fun onCanGoForward(session: GeckoSession, canGoForward: Boolean) {
-                if (id == activeId) _canGoForward = canGoForward
+                if (id == activeId) Sessions.canGoForward = canGoForward
             }
         }
 

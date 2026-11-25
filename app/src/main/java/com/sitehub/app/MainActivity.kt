@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (Nav.tab == Nav.Tab.INICIO && Sessions.canGoBack.value) {
+        if (Nav.tab == Nav.Tab.INICIO && Sessions.canGoBack) {
             Sessions.goBack()
             return
         }

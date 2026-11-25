@@ -101,18 +101,18 @@ object Prefs {
                 "(KHTML, like Gecko) Chrome/154.0.8037.58 Safari/537.36"
     }
 
-    fun setTheme(mode: ThemeMode) {
+    fun applyTheme(mode: ThemeMode) {
         theme = mode
         prefs.edit().putString(K_THEME, mode.name).apply()
     }
 
     /** Las cookies se aplican al reiniciar: Gecko lee su política al crear el runtime. */
-    fun setCookies(mode: CookieMode) {
+    fun applyCookies(mode: CookieMode) {
         cookies = mode
         prefs.edit().putString(K_COOKIES, mode.name).apply()
     }
 
-    fun setUa(mode: UaMode) {
+    fun applyUa(mode: UaMode) {
         ua = mode
         prefs.edit().putString(K_UA, mode.name).apply()
     }
