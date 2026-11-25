@@ -200,35 +200,32 @@ object Sessions {
                 openExternal(request.uri)
                 return GeckoResult.fromValue(AllowOrDeny.DENY)
             }
+
+            // window.open / target="_blank": Gecko pide aquí la nueva sesión
+            // (NavigationDelegate.onNewSession; GeckoSession no tiene TabDelegate).
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                if (Engine.runtime == null) return null
+                val scheme = uri.substringBefore(':', "").lowercase()
+                if (scheme !in setOf("http", "https", "about", "blob", "data")) {
+                    openExternal(uri)
+                    return null
+                }
+                val newId = nextId++
+                val created = createSession(newId)
+                urls[newId] = uri
+                activeId = newId
+                syncActiveState()
+                // Gecko carga la URI él mismo en la sesión devuelta.
+                return GeckoResult.fromValue(created)
+            }
         }
 
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
                 DownloadCenter.save(response)
             }
-        }
-
-        // window.open / target="_blank": sin TabDelegate, Gecko los bloquea en
-        // silencio y muchos sitios no funcionan.
-        session.tabDelegate = object : GeckoSession.TabDelegate {
-            override fun onNewTab(session: GeckoSession?, uri: String?): GeckoResult<GeckoSession>? {
-                if (Engine.runtime == null) return null
-                if (uri != null) {
-                    val scheme = uri.substringBefore(':', "").lowercase()
-                    if (scheme !in setOf("http", "https", "about", "blob", "data")) {
-                        openExternal(uri)
-                        return null
-                    }
-                }
-                val newId = nextId++
-                val created = createSession(newId)
-                urls[newId] = uri ?: "about:blank"
-                activeId = newId
-                syncActiveState()
-                // Gecko carga la URI él mismo en la sesión devuelta.
-                return GeckoResult.fromValue(created)
-            }
-            override fun onCloseTab(session: GeckoSession?) {
+            // window.close() desde la página cierra su pestaña.
+            override fun onCloseRequest(session: GeckoSession) {
                 val entry = sessions.entries.firstOrNull { it.value == session } ?: return
                 close(entry.key)
             }

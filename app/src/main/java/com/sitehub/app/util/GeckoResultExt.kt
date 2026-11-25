@@ -40,7 +40,7 @@ suspend fun <T> GeckoResult<T>.gvAwait(): T = suspendCancellableCoroutine { cont
             }
         },
         object : GeckoResult.OnExceptionListener<Void> {
-            override fun onException(exception: Throwable?): GeckoResult<Void>? {
+            override fun onException(exception: Throwable): GeckoResult<Void>? {
                 cont.resumeWithException(
                     exception ?: RuntimeException("GeckoResult falló sin detalle")
                 )
