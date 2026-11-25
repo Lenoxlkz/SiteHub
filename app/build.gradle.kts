@@ -14,11 +14,16 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+    }
 
-        // Solo arm64: el APK pesa ~92-97 MB en vez de ~160 MB y es la
-        // arquitectura de todos los móviles actuales (incluido tu Honor).
-        ndk {
-            abiFilters += "arm64-v8a"
+    // APK por arquitectura: arm64 pesa ~95 MB (el universal con las tres
+    // ABIs pesa ~180 MB). Se generan ambos; el universal queda de respaldo.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = true
         }
     }
 
