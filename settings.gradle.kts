@@ -1,23 +1,24 @@
 pluginManagement {
     repositories {
-        // Espejos Aliyun primero: resuelven aunque Maven Central limite por
-        // tasa; los repos oficiales quedan como respaldo.
-        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+        // Repos oficiales primero (integridad de los artefactos); los espejos
+        // Aliyun quedan como respaldo por si Maven Central limita por tasa.
         google()
         mavenCentral()
         gradlePluginPortal()
+        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
     }
 }
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
         google()
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
         mavenCentral()
         // Motor Firefox: solo está en el repositorio oficial de Mozilla.
         maven { url = uri("https://maven.mozilla.org/maven2") }
+        // Espejos de respaldo.
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
     }
 }
 

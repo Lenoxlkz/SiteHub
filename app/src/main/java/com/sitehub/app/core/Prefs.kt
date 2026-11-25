@@ -106,10 +106,11 @@ object Prefs {
         prefs.edit().putString(K_THEME, mode.name).apply()
     }
 
-    /** Las cookies se aplican al reiniciar: Gecko lee su política al crear el runtime. */
+    /** Las cookies se aplican EN VIVO al motor (sin reiniciar). */
     fun applyCookies(mode: CookieMode) {
         cookies = mode
         prefs.edit().putString(K_COOKIES, mode.name).apply()
+        Engine.applyCookies(mode)
     }
 
     fun applyUa(mode: UaMode) {

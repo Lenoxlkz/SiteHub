@@ -82,12 +82,43 @@ object ExtensionsManager {
 
     fun consumeNotice() { notice = null }
 
+    /** Confirmación de permisos pendiente (diálogo en la UI antes de instalar). */
+    data class InstallPrompt(
+        val name: String,
+        val permissions: List<String>,
+        val origins: List<String>,
+        val response: GeckoResult<WebExtension.PermissionPromptResponse>
+    )
+
+    var installPrompt by mutableStateOf<InstallPrompt?>(null)
+        private set
+
+    fun resolveInstallPrompt(allow: Boolean) {
+        val p = installPrompt ?: return
+        installPrompt = null
+        p.response.complete(WebExtension.PermissionPromptResponse(allow, false))
+    }
+
+    private fun requestInstallConfirmation(
+        extension: WebExtension,
+        permissions: Array<String>,
+        origins: Array<String>
+    ): GeckoResult<WebExtension.PermissionPromptResponse> {
+        val result = GeckoResult<WebExtension.PermissionPromptResponse>()
+        installPrompt = InstallPrompt(
+            name = extension.metaData?.name ?: extension.id,
+            permissions = permissions.toList(),
+            origins = origins.toList(),
+            response = result
+        )
+        return result
+    }
+
     /**
      * Registra el PromptDelegate: SIN ESTO las instalaciones se quedan
-     * colgadas para siempre. Otorga los permisos automáticamente (todas las
-     * extensiones provienen de la tienda oficial AMO, firmadas por Mozilla)
-     * con aviso en la UI, igual que hacen los navegadores con la tienda de
-     * Chrome para extensiones verificadas.
+     * colgadas para siempre. Pide confirmación al usuario mostrando los
+     * permisos solicitados (diálogo en la UI) antes de instalar — también para
+     * paquetes por URL o archivos locales, que NO son necesariamente de AMO.
      */
     private fun installPromptDelegate(runtime: GeckoRuntime) {
         runtime.webExtensionController.setPromptDelegate(
@@ -98,26 +129,15 @@ object ExtensionsManager {
                     permissions: Array<String>,
                     origins: Array<String>,
                     dataCollectionPermissions: Array<String>
-                ): GeckoResult<WebExtension.PermissionPromptResponse>? {
-                    announcePermissions(
-                        extension,
-                        permissions.size + origins.size + dataCollectionPermissions.size
-                    )
-                    return GeckoResult.fromValue(
-                        WebExtension.PermissionPromptResponse(true, false, false)
-                    )
-                }
+                ): GeckoResult<WebExtension.PermissionPromptResponse>? =
+                    requestInstallConfirmation(extension, permissions, origins)
 
                 override fun onInstallPromptRequest(
                     extension: WebExtension,
                     permissions: Array<String>,
                     origins: Array<String>
-                ): GeckoResult<WebExtension.PermissionPromptResponse>? {
-                    announcePermissions(extension, permissions.size + origins.size)
-                    return GeckoResult.fromValue(
-                        WebExtension.PermissionPromptResponse(true, false)
-                    )
-                }
+                ): GeckoResult<WebExtension.PermissionPromptResponse>? =
+                    requestInstallConfirmation(extension, permissions, origins)
 
                 override fun onUpdatePrompt(
                     currentlyInstalled: WebExtension,
@@ -192,6 +212,22 @@ object ExtensionsManager {
                 )
                 return GeckoResult.fromValue(session)
             }
+
+            override fun onTogglePopup(
+                webExtension: WebExtension,
+                action: WebExtension.Action
+            ): GeckoResult<GeckoSession>? {
+                if (popupRequest?.extensionId == webExtension.id) {
+                    closePopup(webExtension.id)
+                    return null
+                }
+                val session = ensurePopupSession(webExtension.id, uri = null)
+                popupRequest = PopupRequest(
+                    webExtension.id,
+                    webExtension.metaData?.name ?: webExtension.id
+                )
+                return GeckoResult.fromValue(session)
+            }
         })
     }
 
@@ -242,6 +278,9 @@ object ExtensionsManager {
             return Result.failure(e)
         } finally {
             busy = false
+            // Si la instalación falló o expiró con el diálogo aún abierto,
+            // resuelve el prompt como denegado para no dejar a Gecko colgado.
+            installPrompt?.let { resolveInstallPrompt(false) }
         }
     }
 
@@ -284,7 +323,8 @@ object ExtensionsManager {
                         return@repeat
                     }
                     200 -> {
-                        val name = current.substringBefore('?')
+                        val finalUrl = conn.url?.toString() ?: current
+                        val name = finalUrl.substringBefore('?')
                             .substringAfterLast('/')
                             .takeIf { it.isNotBlank() && it.contains('.') }
                             ?: "addon_${System.currentTimeMillis()}.xpi"
@@ -321,9 +361,11 @@ object ExtensionsManager {
     suspend fun setEnabled(ext: WebExtension, enabled: Boolean) = withContext(Dispatchers.Main) {
         runCatching {
             val updated = if (enabled) {
-                controller().enable(ext, 0).gvAwaitOrTimeout("activar la extensión")
+                controller().enable(ext, WebExtensionController.EnableSource.USER)
+                    .gvAwaitOrTimeout("activar la extensión")
             } else {
-                controller().disable(ext, 0).gvAwaitOrTimeout("desactivar la extensión")
+                controller().disable(ext, WebExtensionController.EnableSource.USER)
+                    .gvAwaitOrTimeout("desactivar la extensión")
             }
             hookExtension(updated)
         }
@@ -331,7 +373,13 @@ object ExtensionsManager {
     }
 
     suspend fun uninstall(ext: WebExtension) = withContext(Dispatchers.Main) {
-        runCatching { controller().uninstall(ext).gvAwaitOrTimeout("desinstalar la extensión") }
+        val result = runCatching {
+            controller().uninstall(ext).gvAwaitOrTimeout("desinstalar la extensión")
+        }
+        if (result.isFailure) {
+            notice = "No se pudo desinstalar «${ext.metaData?.name ?: ext.id}»: " +
+                (result.exceptionOrNull()?.message ?: "error desconocido")
+        }
         closePopup(ext.id)
         toolbarActions = toolbarActions - ext.id
         refresh()
@@ -349,6 +397,13 @@ object ExtensionsManager {
             runCatching { old.close() }
         }
         val session = GeckoSession()
+        // Gecko avisa del cierre del popup (window.close de la extensión) vía
+        // ContentDelegate.onCloseRequest: sin esto el diálogo nunca se cerraba.
+        session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onCloseRequest(session: GeckoSession) {
+                closePopup(extId)
+            }
+        }
         session.open(runtimeRef!!)
         uri?.let { session.loadUri(it) }
         popupSessions[extId] = session

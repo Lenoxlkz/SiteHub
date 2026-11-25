@@ -52,8 +52,12 @@ object AmoClient {
                     slug = slug,
                     name = localizedString(obj.opt("name")).ifBlank { slug },
                     iconUrl = obj.optString("icon_url", ""),
-                    rating = obj.optDouble("average_rating", 0.0),
-                    users = obj.optLong("daily_users", obj.optLong("weekly_downloads", 0L))
+                    // Campos REALES de la API v4 (verificados en vivo):
+                    // ratings.average y average_daily_users. Los anteriores
+                    // (average_rating / daily_users) no existen -> rating 0 y
+                    // "usuarios" mostraba las descargas semanales.
+                    rating = obj.optJSONObject("ratings")?.optDouble("average", 0.0) ?: 0.0,
+                    users = obj.optLong("average_daily_users", 0L)
                 )
             )
         }
@@ -82,6 +86,8 @@ object AmoClient {
         conn.setRequestProperty("User-Agent", UA)
         conn.setRequestProperty("Accept", "application/json")
         try {
+            val code = conn.responseCode
+            if (code !in 200..299) error("La tienda respondió HTTP $code al buscar")
             val body = conn.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
             val items = parseSearchResults(body)
             if (items.isEmpty()) error("La tienda no devolvió resultados para «$clean»")

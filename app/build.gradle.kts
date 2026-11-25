@@ -12,8 +12,8 @@ android {
         applicationId = "com.sitehub.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     // APK por arquitectura: arm64 pesa ~95 MB (el universal con las tres
@@ -27,12 +27,37 @@ android {
         }
     }
 
+    // Firma de release ESTABLE: si el workflow inyecta un keystore fijo
+    // (secrets SIGNING_*), se usa ese; si no, cae a debug solo como respaldo.
+    // La clave debug de CI se regenera en cada run y rompe las actualizaciones
+    // (INSTALL_FAILED_UPDATE_INCOMPATIBLE): cada APK salía con otra firma.
+    val releaseKeystore = System.getenv("SIGNING_KEYSTORE_FILE")
+    val hasReleaseSigning = releaseKeystore != null && file(releaseKeystore).exists()
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystore!!)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
-            // Firma con la clave de depuración para que el APK se pueda
-            // instalar directamente sin proceso de release privado.
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -47,6 +72,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     lint {

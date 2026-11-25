@@ -18,11 +18,12 @@ class CoreTest {
         {"results":[
           {"guid":"uBlock0@raymondhill.net","slug":"ublock-origin",
            "name":{"en-US":"uBlock Origin","es":"uBlock Origin"},
-           "icon_url":"https://amo/icon.png","average_rating":4.7,
-           "daily_users":6000000},
+           "icon_url":"https://amo/icon.png",
+           "ratings":{"average":4.7,"count":1000},
+           "average_daily_users":6000000},
           {"guid":"sin-slug@x","slug":"",
-           "name":{"en-US":"roto"},"icon_url":"","average_rating":0.0,
-           "daily_users":1}
+           "name":{"en-US":"roto"},"icon_url":"",
+           "ratings":{"average":0.0},"average_daily_users":1}
         ]}
         """.trimIndent()
         val out = AmoClient.parseSearchResults(json)

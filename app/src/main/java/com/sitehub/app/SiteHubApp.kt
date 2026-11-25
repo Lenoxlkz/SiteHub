@@ -25,6 +25,7 @@ class SiteHubApp : Application() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         when (level) {
+            ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN,
             ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
             ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
             ComponentCallbacks2.TRIM_MEMORY_BACKGROUND,

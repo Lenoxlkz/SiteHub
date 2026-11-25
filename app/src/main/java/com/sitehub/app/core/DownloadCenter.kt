@@ -61,26 +61,46 @@ object DownloadCenter {
     fun save(response: WebResponse) {
         scope.launch {
             val name = fileNameFor(response)
-            val saved = runCatching { saveStream(name, response) }.getOrNull()
+            val body = response.body
+            if (body == null) {
+                lastSaved = "⚠ «$name»: la descarga llegó sin cuerpo"
+                return@launch
+            }
+            // GeckoView exige que el consumidor CIERRE el stream; copyTo no lo
+            // cierra y se fugaba una conexión por descarga. body.use garantiza
+            // el cierre incluso si el guardado falla.
+            val saved = runCatching {
+                body.use { input -> saveStream(name, response, input) }
+            }.getOrNull()
             if (saved != null) {
                 lastSaved = name
                 refreshInternal()
             } else {
-                lastSaved = "⚠ No se pudo guardar «$name»"
+                lastSaved = "⚠ No se pudo guardar «$name»" +
+                    if (Build.VERSION.SDK_INT < 29) " (¿permiso de almacenamiento concedido?)" else ""
             }
         }
     }
 
+    /** Los headers HTTP son case-insensitive: HTTP/2 los envía en minúscula. */
+    private fun header(response: WebResponse, name: String): String? =
+        response.headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+
     private fun fileNameFor(response: WebResponse): String {
         // 1) Content-Disposition; 2) nombre de la URL; 3) genérico.
-        val disposition = response.headers["Content-Disposition"]
+        val disposition = header(response, "Content-Disposition")
         disposition?.let {
+            // RFC 5987: filename*=UTF-8''nombre%20codificado
+            Regex("filename[*][ ]*=[ ]*(?:UTF-8|utf-8)''([^;]+)", RegexOption.IGNORE_CASE)
+                .find(it)?.groupValues?.get(1)?.trim()
+                ?.let { enc -> runCatching { java.net.URLDecoder.decode(enc, "UTF-8") }.getOrNull() }
+                ?.takeIf { n -> n.isNotBlank() }?.let { n -> return sanitize(n) }
             val match = Regex("filename\\s*=\\s*\"?([^\";]+)\"?", RegexOption.IGNORE_CASE).find(it)
             match?.groupValues?.get(1)?.takeIf { n -> n.isNotBlank() }?.let { return sanitize(it) }
         }
         val fromUri = response.uri.substringBefore('?').substringAfterLast('/')
         if (fromUri.isNotBlank() && fromUri.contains('.')) return sanitize(fromUri)
-        val ext = when (response.headers["Content-Type"]) {
+        val ext = when (header(response, "Content-Type")?.substringBefore(';')?.trim()) {
             "application/pdf" -> ".pdf"
             "image/jpeg" -> ".jpg"
             "image/png" -> ".png"
@@ -93,9 +113,9 @@ object DownloadCenter {
     private fun sanitize(name: String): String =
         name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(120)
 
-    private fun saveStream(name: String, response: WebResponse): Uri {
-        val body = response.body ?: error("La descarga llegó sin cuerpo (stream vacío)")
-        val mime = response.headers["Content-Type"] ?: "application/octet-stream"
+    private fun saveStream(name: String, response: WebResponse, body: java.io.InputStream): Uri {
+        val mime = header(response, "Content-Type")?.substringBefore(';')?.trim()
+            ?.takeIf { it.isNotEmpty() } ?: "application/octet-stream"
 
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = appContext().contentResolver
@@ -118,8 +138,22 @@ object DownloadCenter {
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                 SUBDIR
             )
+            if (appContext().checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                error("Permiso de almacenamiento denegado (Android 8 o anterior)")
+            }
             dir.mkdirs()
-            val file = File(dir, name)
+            // No sobrescribir una descarga existente con el mismo nombre.
+            var file = File(dir, name)
+            val base = name.substringBeforeLast('.')
+            val ext = name.substringAfterLast('.', "")
+            var n = 1
+            while (file.exists()) {
+                val suffix = if (ext.isEmpty()) "$base ($n)" else "$base ($n).$ext"
+                file = File(dir, suffix)
+                n++
+            }
             file.outputStream().use { out -> body.copyTo(out, 64 * 1024) }
             return Uri.fromFile(file)
         }
