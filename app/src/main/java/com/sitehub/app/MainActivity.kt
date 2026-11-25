@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.sitehub.app.core.Engine
 import com.sitehub.app.core.Sessions
 import com.sitehub.app.ui.Nav
 import com.sitehub.app.ui.SiteHubTheme
@@ -20,6 +19,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Android 6–8.1: permiso de escritura para descargas en almacenamiento
+        // público (en Android 10+ se usa MediaStore, sin permiso).
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q &&
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this, arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 1001
+            )
+        }
 
         val crash = CrashReporter.pending(this)
         if (crash != null) {
@@ -54,11 +64,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        // Al cerrar la actividad, la vista de Gecko se suelta (las sesiones
-        // siguen vivas en memoria solo mientras el proceso siga adelante).
+        // Solo cerramos las sesiones. El runtime Gecko vive con el proceso:
+        // apagarlo aquí (shutdown) dejaba el singleton Engine apuntando a un
+        // runtime muerto al reabrir la app con el proceso aún vivo, y Gecko no
+        // soporta reiniciar el runtime en el mismo proceso (crash/cuelgue).
         if (isFinishing) {
             runCatching { Sessions.closeAll() }
-            runCatching { Engine.runtime?.shutdown() }
         }
         super.onDestroy()
     }
