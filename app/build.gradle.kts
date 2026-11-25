@@ -47,12 +47,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            // R8 + shrinkResources DESACTIVADOS: con GeckoView provocaban un
+            // crash en arranque que el CI (que solo compila) no detecta. Es la
+            // misma configuración que funcionaba en v1.0.0. Se puede reactivar
+            // más adelante con reglas keep probadas en un dispositivo real.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
