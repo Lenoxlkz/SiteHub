@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import com.sitehub.app.core.DownloadCenter
 import com.sitehub.app.core.Engine
+import com.sitehub.app.core.HomeData
 import com.sitehub.app.core.Prefs
 import com.sitehub.app.core.Sessions
 import com.sitehub.app.util.CrashReporter
@@ -19,6 +20,7 @@ class SiteHubApp : Application() {
         if (isCrashProcess()) return
         CrashReporter.install(this)
         Prefs.init(this)
+        HomeData.init(this)
         DownloadCenter.init(this)
         Engine.warmUpAfterFirstFrame(this)
     }
