@@ -1,5 +1,7 @@
 package com.sitehub.app.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -11,6 +13,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -99,7 +102,7 @@ fun AppRoot() {
                 AndroidView(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(300.dp),
+                        .height(420.dp),
                     factory = { context ->
                         GeckoView(context).apply {
                             ExtensionsManager.popupSession(popup.extensionId)?.let { session ->
@@ -112,6 +115,43 @@ fun AppRoot() {
             confirmButton = {
                 TextButton(onClick = { ExtensionsManager.closePopup(popup.extensionId) }) {
                     Text("Cerrar")
+                }
+            }
+        )
+    }
+
+    // Confirmación de permisos antes de instalar una extensión.
+    val installPrompt = ExtensionsManager.installPrompt
+    if (installPrompt != null) {
+        AlertDialog(
+            onDismissRequest = { ExtensionsManager.resolveInstallPrompt(false) },
+            title = { Text("Instalar «${installPrompt.name}»") },
+            text = {
+                Column {
+                    Text(
+                        "Esta extensión solicita los siguientes permisos:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (installPrompt.permissions.isEmpty() && installPrompt.origins.isEmpty()) {
+                        Text("Sin permisos especiales.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    installPrompt.permissions.forEach {
+                        Text("• $it", style = MaterialTheme.typography.bodySmall)
+                    }
+                    installPrompt.origins.forEach {
+                        Text("• Acceso a: $it", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { ExtensionsManager.resolveInstallPrompt(true) }) {
+                    Text("Instalar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { ExtensionsManager.resolveInstallPrompt(false) }) {
+                    Text("Cancelar")
                 }
             }
         )
