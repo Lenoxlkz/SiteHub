@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
@@ -72,6 +74,7 @@ import com.sitehub.app.core.DownloadCenter
 import com.sitehub.app.core.Engine
 import com.sitehub.app.core.Prefs
 import com.sitehub.app.core.Sessions
+import com.sitehub.app.core.HomeData
 import com.sitehub.app.core.extensions.ExtensionsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -96,6 +99,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     val loading = Sessions.loading
     val ready = Engine.ready
     val actions = ExtensionsManager.toolbarActions
+    val isFav = HomeData.isFavorite(url)
 
     Column(modifier.fillMaxSize()) {
         // Barra de navegación
@@ -105,6 +109,9 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(onClick = { Nav.browsing = false }) {
+                Icon(Icons.Filled.Home, contentDescription = "Home")
+            }
             IconButton(onClick = { Sessions.goBack() }, enabled = canGoBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
             }
@@ -132,6 +139,13 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             }
             IconButton(onClick = { Sessions.load(urlField) }) {
                 Icon(Icons.Filled.Done, contentDescription = "Ir")
+            }
+            IconButton(onClick = { HomeData.toggleFavorite(url) }) {
+                Icon(
+                    Icons.Filled.Star,
+                    contentDescription = "Favorito",
+                    tint = if (isFav) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
