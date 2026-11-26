@@ -29,10 +29,19 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        // Si hubo un crash NATIVO (GeckoView) desde la última vez, mostrar el
-        // informe capturado del logcat en la pantalla de crash (con Copiar).
-        if (CrashReporter.captureNativeOnStart(this)) {
-            startActivity(Intent(this, CrashActivity::class.java))
+        // Primero captura crashes nativos (libxul, GeckoView) desde logcat:
+        // los crashes nativos NO pasan por el handler de Java y por eso antes
+        // nunca aparecían en la pantalla de crash.
+        val hadNative = CrashReporter.captureNativeOnStart(this)
+        val crashText = CrashReporter.pending(this)
+
+        // Si hay crash (nativo o java previo), vamos directo a la pantalla de
+        // crash con Copiar/Reiniciar en lugar del diálogo simple.
+        if (hadNative || crashText != null) {
+            startActivity(Intent(this, CrashActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            finish()
+            return
         }
 
         setContent {
@@ -52,10 +61,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        // Solo cerramos las sesiones. El runtime Gecko vive con el proceso:
-        // apagarlo aquí (shutdown) dejaba el singleton Engine apuntando a un
-        // runtime muerto al reabrir la app con el proceso aún vivo, y Gecko no
-        // soporta reiniciar el runtime en el mismo proceso (crash/cuelgue).
         if (isFinishing) {
             runCatching { Sessions.closeAll() }
         }
