@@ -68,9 +68,10 @@ class CoreTest {
     }
 
     @Test
-    fun `parseSites con lista vacia o rota devuelve vacio`() {
+    fun `parseSites lista vacia devuelve vacio y JSON roto usa defaults`() {
         assertTrue(Prefs.parseSites("[]").isEmpty())
-        assertTrue(Prefs.parseSites("no-json").isEmpty())
+        // JSON inválido: parseSites cae a los sitios por defecto (no vacío).
+        assertTrue(Prefs.parseSites("no-json").isNotEmpty())
     }
 
     @Test
