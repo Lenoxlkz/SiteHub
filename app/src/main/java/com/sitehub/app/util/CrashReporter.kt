@@ -13,29 +13,28 @@ import java.util.Date
 import java.util.Locale
 
 object CrashReporter {
+    private var installed = false
     private fun dir(context: Context) = File(context.filesDir, "crash")
     private fun file(context: Context) = File(dir(context), "last_crash.txt")
 
     fun install(context: Context) {
+        if (installed) return          // evita doble instalación (SiteHubApp + MainActivity)
+        installed = true
         val app = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             runCatching {
-                val sw = StringWriter()
-                throwable.printStackTrace(PrintWriter(sw))
+                val sw = StringWriter(); throwable.printStackTrace(PrintWriter(sw))
                 val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
                 val report = buildString {
-                    append("SiteHub crash report\n")
-                    append("Fecha: $stamp\n")
+                    append("SiteHub JAVA crash report\nFecha: $stamp\n")
                     append("Versión: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n")
                     append("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
                     append("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}\n")
-                    append("ABI: ${Build.SUPPORTED_ABIS.joinToString()}\n")
-                    append("Hilo: ${thread.name}\n\n")
+                    append("ABI: ${Build.SUPPORTED_ABIS.joinToString()}\nHilo: ${thread.name}\n\n")
                     append(sw.toString())
                 }
-                dir(app).mkdirs()
-                file(app).writeText(report)
+                dir(app).mkdirs(); file(app).writeText(report)
                 runCatching {
                     app.startActivity(Intent(app, CrashActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
@@ -44,6 +43,37 @@ object CrashReporter {
             previous?.uncaughtException(thread, throwable)
         }
     }
+
+    /**
+     * Captura crashes NATIVOS (SIGSEGV/SIGABRT en libxul de GeckoView) leyendo el
+     * buffer de crash del propio logcat. true si hay uno nuevo que mostrar.
+     */
+    fun captureNativeOnStart(context: Context): Boolean = runCatching {
+        val text = readLogcat("crash", 400) + "\n---- errores recientes ----\n" + readLogcat("main", 150)
+        if (!text.contains("Fatal signal") && !text.contains("SIGSEGV") && !text.contains("SIGABRT")) return false
+        val prefs = context.getSharedPreferences("crash_meta", Context.MODE_PRIVATE)
+        val key = text.hashCode().toString()
+        if (prefs.getString("last_native", null) == key) return false   // ya mostrado
+        prefs.edit().putString("last_native", key).apply()
+        val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        val report = buildString {
+            append("SiteHub NATIVE crash report (logcat)\nCapturado: $stamp\n")
+            append("Versión: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n")
+            append("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
+            append("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}\n")
+            append("ABI: ${Build.SUPPORTED_ABIS.joinToString()}\n\n")
+            append(text)
+        }
+        dir(context).mkdirs(); file(context).writeText(report)
+        true
+    }.getOrDefault(false)
+
+    private fun readLogcat(buffer: String, lines: Int): String = runCatching {
+        val proc = ProcessBuilder("logcat", "-d", "-b", buffer, "-t", lines.toString())
+            .redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().use { it.readText() }
+        proc.waitFor(); out
+    }.getOrDefault("")
 
     fun read(context: Context): String? =
         runCatching { file(context).takeIf { it.exists() }?.readText() }.getOrNull()

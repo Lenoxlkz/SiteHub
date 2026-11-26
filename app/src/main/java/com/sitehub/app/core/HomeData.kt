@@ -37,11 +37,7 @@ object HomeData {
         Entry("https://github.com", "GitHub"),
         Entry("https://addons.mozilla.org", "Extensiones AMO")
     )
-    private fun seedRecent() = listOf(
-        Entry("https://mangalovers.com", "Mangalovers"),
-        Entry("https://es.wikipedia.org", "Wikipedia"),
-        Entry("https://news.ycombinator.com", "Hacker News")
-    )
+    private fun seedRecent() = emptyList<Entry>()   // el historial debe ser real
 
     private fun load(key: String): List<Entry> = runCatching {
         val arr = JSONArray(prefs.getString(key, "[]"))
