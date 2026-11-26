@@ -106,6 +106,7 @@ object Sessions {
     fun stopLoading() { runCatching { activeSession()?.stop() } }
 
     fun load(url: String) {
+        if (Engine.runtime == null) return   // sin motor: no dejar estado inconsistente
         val normalized = Prefs.normalizeUrl(url)
         if (activeSession() == null) {
             open(normalized)

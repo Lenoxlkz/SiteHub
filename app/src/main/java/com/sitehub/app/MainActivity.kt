@@ -1,9 +1,7 @@
 package com.sitehub.app
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
-import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.sitehub.app.core.Sessions
@@ -31,20 +29,10 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        val crash = CrashReporter.pending(this)
-        if (crash != null) {
-            AlertDialog.Builder(this)
-                .setTitle("SiteHub se cerró inesperadamente")
-                .setMessage("¿Compartir el informe para diagnosticarlo?")
-                .setPositiveButton("Compartir") { _, _ ->
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, crash)
-                    }
-                    startActivity(Intent.createChooser(send, "Informe de crash"))
-                }
-                .setNegativeButton("Descartar", null)
-                .show()
+        // Si hubo un crash NATIVO (GeckoView) desde la última vez, mostrar el
+        // informe capturado del logcat en la pantalla de crash (con Copiar).
+        if (CrashReporter.captureNativeOnStart(this)) {
+            startActivity(Intent(this, CrashActivity::class.java))
         }
 
         setContent {

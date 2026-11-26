@@ -62,6 +62,23 @@ class CoreTest {
     }
 
     @Test
+    fun `parseSearchResults sin resultados devuelve vacio`() {
+        assertTrue(AmoClient.parseSearchResults("""{"results":[]}""").isEmpty())
+        assertTrue(AmoClient.parseSearchResults("""{}""").isEmpty())
+    }
+
+    @Test
+    fun `parseSites con lista vacia o rota devuelve vacio`() {
+        assertTrue(Prefs.parseSites("[]").isEmpty())
+        assertTrue(Prefs.parseSites("no-json").isEmpty())
+    }
+
+    @Test
+    fun `normalizeUrl conserva el esquema http`() {
+        assertEquals("http://ejemplo.com", Prefs.normalizeUrl("http://ejemplo.com"))
+    }
+
+    @Test
     fun `normalizeUrl detecta busquedas y completa https`() {
         assertEquals(
             "https://mangalovers.josenunez.cl",
